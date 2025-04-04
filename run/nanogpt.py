@@ -10,6 +10,9 @@ from DistributedSim.gradient_strategy.gradient_strategy import *
 from DistributedSim.models.nanogpt import GPT, GPTConfig
 from DistributedSim.dataset.build_dataset import *
 
+from DistributedSim.optim.custom_adamw import CustomAdamW
+
+
 def gen_wandb_name(args):
     name = f"bs{args.batch_size}_lr{args.lr:.0e}_warm{args.warmup_steps}_max{args.max_steps}"
     return name
@@ -90,7 +93,8 @@ def config_gen(args, gpt_config):
         val_proportion=args.val_proportion,
 
         gradient_config=GradientConfig(
-            optimizer_class=torch.optim.AdamW,
+            #optimizer_class=torch.optim.AdamW,
+            optimizer_class=CustomAdamW,
             optimizer_kwargs={
                 'lr': args.lr,
             },
