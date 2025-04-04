@@ -16,6 +16,8 @@ class CustomAdamW(Optimizer):
 
         self.centered = centered
 
+        print("LR1:", lr)
+
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super(CustomAdamW, self).__init__(params, defaults)
 
@@ -27,6 +29,8 @@ class CustomAdamW(Optimizer):
             loss = closure()
 
         for group in self.param_groups:
+            print("LR2:", group["lr"])
+            exit(1)
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -51,21 +55,28 @@ class CustomAdamW(Optimizer):
                 # Compute bias-corrected estimates
                 bias_correction1 = 1 - beta1 ** state["step"]
                 bias_correction2 = 1 - beta2 ** state["step"]
-                denom = (exp_avg_sq.sqrt() / (bias_correction2 ** 0.5)).add_(group["eps"])
 
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_unbiased = exp_avg / bias_correction1
+
                 if self.centered:
-                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+                    exp_avg_sq.mul_(beta2).addcmul_(grad - exp_avg_unbiased, grad - exp_avg_unbiased, value=1 - beta2)
                 else:
                     exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-                step_size = group["lr"] / bias_correction1
+                denom = (exp_avg_sq.sqrt() / (bias_correction2 ** 0.5)).add_(group["eps"])
 
                 # Decoupled weight decay
                 if group["weight_decay"] != 0:
                     p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])
 
                 # Parameter update
-                p.data.addcdiv_(exp_avg, denom, value=-step_size)
+                step_size = group["lr"]
+
+                print('sz', step_size)
+                print('a', exp_avg_unbiased.mean())
+                print('b', denom.mean())
+        
+                p.data.addcdiv_(exp_avg_unbiased, denom, value=-step_size)
 
         return loss

@@ -21,26 +21,31 @@ class FedAvgGradient(GradientStrategy):
             self.outer_optimizer = self.gradient_config.outer_optimizer_cls(self.master_model.parameters(), 
                                                                             **self.gradient_config.outer_optimizer_kwargs)
 
+        print(self.gradient_config.optimizer_kwargs)
         self.optim = self.gradient_config.optimizer_class(model.parameters(), 
                                                           **self.gradient_config.optimizer_kwargs)
         self._setup_scheduler()
 
-    def _average_models(self) -> None:
+    def _reduce_models(self) -> None:
         for param in self.model.parameters():
             all_reduce(param.data, op=dist.ReduceOp.SUM)
             param.data /= self.config.num_nodes
+            # reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
+            # if self.rank == 0:
+            #     param.data /= self.config.num_nodes
+
 
     def _sync_opt_state(self) -> None:
         for param in self.model.parameters():
             if param.requires_grad:
                 #if 'exp_avg' in self.optim.state[param].keys():
                 all_reduce(self.optim.state[param]['exp_avg'], op=dist.ReduceOp.SUM)
-                self.optim.state[param] /= self.config.num_nodes
+                self.optim.state[param]['exp_avg'] /= self.config.num_nodes
 
             if param.requires_grad:
                 #if 'exp_avg_sq' in self.optim.state[param].keys():
                 all_reduce(self.optim.state[param]['exp_avg_sq'], op=dist.ReduceOp.SUM)
-                self.optim.state[param] /= self.config.num_nodes
+                self.optim.state[param][ 'exp_avg_sq'] /= self.config.num_nodes
 
 
     def _broadcast_model_params(self) -> None:
@@ -61,11 +66,18 @@ class FedAvgGradient(GradientStrategy):
 
         # We have just calculated the loss and done the backward pass. 
         # Therefore we do inner step first.
+        # for name, param in self.model.named_parameters():
+        #     if param.requires_grad:
+        #         print(name, param.grad.mean())
+
         self.optim.step()
 
         # Outer step if needed.
-        if self.local_step % self.gradient_config.diloco_interval == 0 and self.local_step > 0:
-            self._average_models()
+        if self.local_step % self.gradient_config.outer_interval == 0 and self.local_step > 0:
+            if self.gradient_config.merge_method == 'mean':
+                self._reduce_models()
+            else:
+                raise NotImplementedError(f"Merge method unknown: {merge_method}")
 
             if self.rank == 0:
                 self.outer_optimizer.zero_grad()
@@ -75,8 +87,8 @@ class FedAvgGradient(GradientStrategy):
 
             self._broadcast_model_params()
 
-            if self.gradient_config.sync_opt_state:
-                self._sync_opt_state()
+            #if self.gradient_config.sync_opt_state:
+            #    self._sync_opt_state()
 
 
         self.local_step += 1

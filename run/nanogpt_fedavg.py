@@ -18,8 +18,8 @@ def main():
     parser = arg_parse()
 
     parser.add_argument("--outer_interval", type=int, default=100)
-    parser.add_argument('--outer_lr', type=float, default=1.0)
-    parser.add_argument('--merge_method', type=str, default='fedavg')
+    parser.add_argument('--outer_lr', type=float, default=0.7)
+    parser.add_argument('--merge_method', type=str, default='mean')
     parser.add_argument('--sync_opt_state', action='store_true')
 
     args = parser.parse_args()

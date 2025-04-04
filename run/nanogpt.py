@@ -39,6 +39,7 @@ def arg_parse():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--local_minibatch_size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument('--centered', action='store_true')
     parser.add_argument("--max_norm", type=float, default=1.0)
     parser.add_argument("--warmup_steps", type=int, default=1000)
     parser.add_argument("--max_steps", type=int, default=10000)
@@ -93,10 +94,11 @@ def config_gen(args, gpt_config):
         val_proportion=args.val_proportion,
 
         gradient_config=GradientConfig(
-            #optimizer_class=torch.optim.AdamW,
-            optimizer_class=CustomAdamW,
+            optimizer_class=torch.optim.AdamW,
+            #optimizer_class=CustomAdamW,
             optimizer_kwargs={
                 'lr': args.lr,
+                #'centered': args.centered,
             },
             max_norm=args.max_norm,
             lr_scheduler='lambda_cosine',

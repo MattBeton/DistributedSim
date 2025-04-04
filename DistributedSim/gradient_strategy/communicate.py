@@ -75,8 +75,8 @@ def all_gather(tensor_list, tensor, group=None, async_op=False):
 #     return dist.reduce_scatter(tensor)
 
 # @mps_compatible
-# def reduce(tensor):
-#     return dist.reduce(tensor)
+def reduce(tensor, dst=None, op=dist.ReduceOp.SUM):
+    return dist.reduce(tensor, dst=dst, op=op)
 
 # @mps_compatible
 # def gather(tensor):
