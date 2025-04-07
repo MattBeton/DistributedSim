@@ -16,8 +16,6 @@ class CustomAdamW(Optimizer):
 
         self.centered = centered
 
-        print("LR1:", lr)
-
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super(CustomAdamW, self).__init__(params, defaults)
 
@@ -29,8 +27,6 @@ class CustomAdamW(Optimizer):
             loss = closure()
 
         for group in self.param_groups:
-            print("LR2:", group["lr"])
-            exit(1)
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -73,9 +69,6 @@ class CustomAdamW(Optimizer):
                 # Parameter update
                 step_size = group["lr"]
 
-                print('sz', step_size)
-                print('a', exp_avg_unbiased.mean())
-                print('b', denom.mean())
         
                 p.data.addcdiv_(exp_avg_unbiased, denom, value=-step_size)
 

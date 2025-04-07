@@ -32,6 +32,9 @@ class TrainNode:
         self.config.gpt_config.vocab_size = self.vocab_size
         
         self.model = self.config.model_class(self.config.gpt_config).to(self.device)
+
+        #self.model.transformer.wte.weight.requires_grad = False
+        #self.model.transformer.wpe.weight.requires_grad = False
     
         print(f"model parameter count: ", self.model.get_num_params() / 1e6)
 

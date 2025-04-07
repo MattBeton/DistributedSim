@@ -94,11 +94,11 @@ def config_gen(args, gpt_config):
         val_proportion=args.val_proportion,
 
         gradient_config=GradientConfig(
-            optimizer_class=torch.optim.AdamW,
-            #optimizer_class=CustomAdamW,
+            #optimizer_class=torch.optim.AdamW,
+            optimizer_class=CustomAdamW,
             optimizer_kwargs={
                 'lr': args.lr,
-                #'centered': args.centered,
+                'centered': args.centered,
             },
             max_norm=args.max_norm,
             lr_scheduler='lambda_cosine',
