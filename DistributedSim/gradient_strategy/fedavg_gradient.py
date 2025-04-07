@@ -83,14 +83,10 @@ class FedAvgGradient(GradientStrategy):
             if param.requires_grad:
                 all_reduce(self.optim.state[param]['exp_avg'].data, op=dist.ReduceOp.SUM)
                 self.optim.state[param]['exp_avg'].data /= self.config.num_nodes
-                self.last_optim.state[param]['exp_avg'] = self.optim.state[param]['exp_avg']
 
             if param.requires_grad:
                 all_reduce(self.optim.state[param]['exp_avg_sq'], op=dist.ReduceOp.SUM)
                 self.optim.state[param][ 'exp_avg_sq'].data /= self.config.num_nodes
-                self.last_optim.state[param]['exp_avg_sq'] = self.optim.state[param]['exp_avg_sq']
-
-            self.last_optim.state[param]['step'] = self.optim.state[param]['step']
 
     def _broadcast_model_params(self) -> None:
         for param in self.model.parameters():
