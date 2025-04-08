@@ -26,16 +26,18 @@ from DistributedSim.sim_builder import *
 from DistributedSim.sim_config import *
 from DistributedSim.gradient_strategy.gradient_strategy import *
 
-class LayerNorm(nn.Module):
-    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
+from torch.nn import LayerNorm
 
-    def __init__(self, ndim, bias):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(ndim))
-        self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
-
-    def forward(self, input):
-        return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
+# class LayerNorm(nn.Module):
+#     """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
+# 
+#     def __init__(self, ndim, bias):
+#         super().__init__()
+#         self.weight = nn.Parameter(torch.ones(ndim))
+#         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
+# 
+#     def forward(self, input):
+#         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
 class CausalSelfAttention(nn.Module):
@@ -231,7 +233,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, y, inference=False):
+    def forward(self, idx, targets=None):
         device = idx.device
         b, t = idx.size()
         assert (
@@ -247,14 +249,31 @@ class GPT(nn.Module):
             x = block(x)
         x = self.transformer.ln_f(x)
 
-        if inference:
-            x = x[:, [-1], :]
-            # if we are given some desired targets also calculate the loss
+        #if inference:
+        #    x = x[:, [-1], :]
+        #    # if we are given some desired targets also calculate the loss
         logits = self.lm_head(x)
 
-        logits = logits.transpose(-1, -2)
-        loss = self.criterion(logits, y)
+        #print('logits1:', logits.shape)
+        #logits = logits.transpose(-1, -2)
+        #loss = self.criterion(logits, y)
+        #print('logits2:', logits.shape)
+
+        #loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+
         return logits, loss
+
+        #if targets is not None:
+        #    # if we are given some desired targets also calculate the loss
+        #    logits = self.lm_head(x)
+        #    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        #else:
+        #    # inference-time mini-optimization: only forward the lm_head on the very last position
+        #    logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+        #    loss = None
+
+        #return logits, loss
 
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary

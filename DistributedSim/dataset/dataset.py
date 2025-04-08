@@ -28,13 +28,16 @@ def load_chunk(chunk_id, s3_client):
         s3_client.download_file(Bucket='exo-datasets', Key=f'owt/chunk_{chunk_id}.npy', Filename=cache_file)
         return np.load(cache_file)
 
-def load_data(start_pc, end_pc):
+def load_data(start_pc, end_pc, just_one_chunk=False):
     s3_client = boto3.client('s3')
 
     chunk_count = count_files_in_s3_folder('exo-datasets', 'owt/', s3_client)
 
     chunk_ids = np.arange(chunk_count)
-    chunk_ids = chunk_ids[int(start_pc * chunk_count):int(end_pc * chunk_count)]
+    if just_one_chunk:
+        chunk_ids = chunk_ids[int(start_pc * chunk_count):int(start_pc * chunk_count) + 1]
+    else:
+        chunk_ids = chunk_ids[int(start_pc * chunk_count):int(end_pc * chunk_count)]
     print(f' importing {len(chunk_ids)} chunks [{chunk_ids[0]},{chunk_ids[-1]}]')
     data = []
     for chunk_id in tqdm(chunk_ids):
@@ -42,14 +45,14 @@ def load_data(start_pc, end_pc):
     return np.concatenate(data)
 
 
-def get_dataset(dataset, start_pc, end_pc, block_size=1024, char=False, device=None):
+def get_dataset(dataset, start_pc, end_pc, block_size=1024, just_one_chunk=False, char=False, device=None):
     if dataset != 'owt':
         data, vocab_size = build_dataset(dataset, block_size, char, start_pc, end_pc)
 
         dataset = ContiguousGPTTrainDataset(data, block_size=block_size, device=device)
     else:
         # For OWT, pull from S3
-        data = load_data(start_pc, end_pc)
+        data = load_data(start_pc, end_pc, just_one_chunk=just_one_chunk)
         vocab_size = 50257
 
         dataset = NonContiguousGPTTrainDataset(data, device=device)

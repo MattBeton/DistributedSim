@@ -94,24 +94,10 @@ class FedAvgGradient(GradientStrategy):
         for key in fisher_dict['input_covariances'].keys():
             in_mat = fisher_dict['input_covariances'][key].clone().to(self.device)
             all_reduce(in_mat)
-            in_mat /= self.config.num_nodes
             fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
         #for key in fisher_dict['gradient_covariances'].keys():
         #    all_reduce(fisher_dict['gradient_covariances'][key].data)
         fisher.load_state_dict(fisher_dict)
-
-        USE_EXACT_DAMPING = False
-        DAMPING = 1.0
-        fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=DAMPING, use_exact_damping=USE_EXACT_DAMPING) # FIX
-
-        fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
-
-        params = [p for p in self.model.parameters() if p.requires_grad]
-        theta_fisher = vector_to_parameter_list(
-            torch.from_numpy(fisher_weighted_params), params
-        )
-        for theta, param in zip(theta_fisher, params):
-            param.data = theta.to(param.device).to(param.dtype).data
 
     def _reduce_models(self) -> None:
         if self.gradient_config.merge_method == 'mean':

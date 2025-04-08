@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
@@ -11,6 +12,11 @@ from .wandb_logger import *
 from .gradient_strategy.communicate import *
 
 from .dataset.dataset import get_dataset
+
+
+import curvlinops
+
+
 
 class TrainNode:
     '''
@@ -32,9 +38,20 @@ class TrainNode:
         self.config.gpt_config.vocab_size = self.vocab_size
         
         self.model = self.config.model_class(self.config.gpt_config).to(self.device)
+        # Remove weight tying as this will break the parameter-to-layer detection
+        self.model.transformer.wte.weight = nn.Parameter(
+            data=self.model.transformer.wte.weight.data.detach().clone()
+        )
+        self.model.transformer.wte.weight.requires_grad = False
 
-        #self.model.transformer.wte.weight.requires_grad = False
-        #self.model.transformer.wpe.weight.requires_grad = False
+        self.model.transformer.wpe.weight.requires_grad = False
+
+        #self.model.lm_head.weight.requires_grad = False
+
+        for module in self.model.modules():
+            if isinstance(module, torch.nn.LayerNorm):
+                for param in module.parameters():
+                    param.requires_grad = False
     
         print(f"model parameter count: ", self.model.get_num_params() / 1e6)
 
@@ -61,7 +78,8 @@ class TrainNode:
         self.gradient_strategy = self.config.gradient_class(self.rank, 
                                                             self.model, 
                                                             self.config,
-                                                            self.logger if self.rank == 0 else None)
+                                                            self.logger if self.rank == 0 else None,
+                                                            curv_dataloader=self.curv_dataloader)
 
         self.epoch = 0
         
@@ -87,6 +105,20 @@ class TrainNode:
                                              block_size=self.config.block_size,
                                              char=self.config.char_dataset)
 
+        self.curv_dataset, self.vocab_size = get_dataset(dataset_id,
+                                             train_start * self.config.dataset_proportion,
+                                             train_end * self.config.dataset_proportion,
+                                             block_size=self.config.block_size,
+                                             char=self.config.char_dataset,
+                                             just_one_chunk=True)
+
+
+        def collate_fn_flatten_target(batch):
+            inputs, targets = zip(*batch)
+            inputs = torch.stack(inputs)  # Standard batching
+            targets = torch.stack(targets).view(-1)  # Flatten the target across batch
+            return inputs, targets
+
         ## Build Dataloaders
         self.train_dataloader = DataLoader(self.train_dataset, 
                           batch_size=self.config.batch_size,
@@ -96,8 +128,14 @@ class TrainNode:
                           batch_size=self.config.batch_size,
                           shuffle=True)
 
+        self.curv_dataloader = DataLoader(self.curv_dataset,
+                          batch_size=self.config.batch_size,
+                          shuffle=False,
+                          collate_fn=collate_fn_flatten_target)
+
         self.train_data_iter = iter(self.train_dataloader)
         self.val_data_iter = iter(self.val_dataloader)
+        self.curv_data_iter = iter(self.curv_dataloader)
 
     def _save_checkpoint(self):
         save_path = os.path.join(self.config.save_dir, 
