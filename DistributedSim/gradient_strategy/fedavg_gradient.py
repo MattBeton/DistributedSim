@@ -11,6 +11,7 @@ from .communicate import *
 from curvlinops import CGInverseLinearOperator, GGNLinearOperator
 from curvlinops import KFACInverseLinearOperator, KFACLinearOperator
 from curvlinops import FisherType, KFACType
+from backpack.utils.convert_parameters import vector_to_parameter_list
 
 
 class GPTWrapper(nn.Module):
@@ -76,42 +77,14 @@ class FedAvgGradient(GradientStrategy):
                 loss_function,
                     [p for p in self.wrapped_model.parameters() if p.requires_grad],
                 self.curv_dataloader,
-                fisher_type=FisherType.FORWARD_ONLY,
+                fisher_type=FisherType.FORWARD_ONLY if self.gradient_config.forward_only else FisherType.MC,
                 #kfac_approx=KFACType.REDUCE,
                 check_deterministic=False,
                 progressbar=True
             ) #.to_scipy()
 
-        # flatten and convert to numpy
-        theta = nn.utils.parameters_to_vector((p for p in self.model.parameters() if p.requires_grad))
-        theta = theta.cpu().detach().numpy()
+        return fisher
 
-        rhs = fisher.to_scipy() @ theta
-        #rhs = sum(fisher.to_scipy() @ theta for fisher, theta in zip(fishers, thetas))
-
-        # Reduce and invert
-        fisher_dict = fisher.state_dict()
-        for key in fisher_dict['input_covariances'].keys():
-            in_mat = fisher_dict['input_covariances'][key].clone().to(self.device)
-            all_reduce(in_mat)
-            in_mat /= self.config.num_nodes
-            fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
-        #for key in fisher_dict['gradient_covariances'].keys():
-        #    all_reduce(fisher_dict['gradient_covariances'][key].data)
-        fisher.load_state_dict(fisher_dict)
-
-        USE_EXACT_DAMPING = False
-        DAMPING = 1.0
-        fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=DAMPING, use_exact_damping=USE_EXACT_DAMPING) # FIX
-
-        fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
-
-        params = [p for p in self.model.parameters() if p.requires_grad]
-        theta_fisher = vector_to_parameter_list(
-            torch.from_numpy(fisher_weighted_params), params
-        )
-        for theta, param in zip(theta_fisher, params):
-            param.data = theta.to(param.device).to(param.dtype).data
 
     def _reduce_models(self) -> None:
         if self.gradient_config.merge_method == 'mean':
@@ -120,12 +93,46 @@ class FedAvgGradient(GradientStrategy):
                 if self.rank == 0:
                     param.data /= self.config.num_nodes
         elif self.gradient_config.merge_method == 'curv0':
-            self._fisher()
+            fisher = self._fisher()
 
-            for param in self.model.parameters():
-                reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
-                if self.rank == 0:
-                    param.data /= self.config.num_nodes
+            # flatten and convert to numpy
+            theta = nn.utils.parameters_to_vector((p for p in self.model.parameters() if p.requires_grad))
+            theta = theta.cpu().detach().numpy()
+
+            rhs = fisher.to_scipy() @ theta
+            #rhs = sum(fisher.to_scipy() @ theta for fisher, theta in zip(fishers, thetas))
+
+            # Reduce and invert
+            fisher_dict = fisher.state_dict()
+            for key in fisher_dict['input_covariances'].keys():
+                in_mat = fisher_dict['input_covariances'][key].clone().to(self.device)
+                all_reduce(in_mat)
+                in_mat /= self.config.num_nodes
+                fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
+            #for key in fisher_dict['gradient_covariances'].keys():
+            #    all_reduce(fisher_dict['gradient_covariances'][key].data)
+            fisher.load_state_dict(fisher_dict)
+
+            USE_EXACT_DAMPING = False
+            damping = 0.1
+            # if self.gradient_config.damping_meantrick:
+            #     damping = self.gradient_config.damping
+            # else:
+            #     damping = self.gradient_config.damping * fisher.diag().mean()
+            fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping, use_exact_damping=USE_EXACT_DAMPING, use_heuristic_damping=self.gradient_config.damping_meantrick) # FIX
+
+            fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
+
+            params = [p for p in self.model.parameters() if p.requires_grad]
+            theta_fisher = vector_to_parameter_list(
+                torch.from_numpy(fisher_weighted_params), params
+            )
+            for theta, param in zip(theta_fisher, params):
+                param.data = theta.to(param.device).to(param.dtype).data
+        elif self.gradient_config.merge_method == 'curv1':
+            raise NotImplementedError(f"CURV1")
+            fisher = self._fisher()
+
 
         elif self.gradient_config.merge_method == 'fisher1':
             for (name, param), (master_name, master_param) in zip(self.model.named_parameters(), self.master_model.named_parameters()):

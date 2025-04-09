@@ -213,8 +213,6 @@ class TrainNode:
             # For rank 1, we want to calculate the average model loss
             this_model = model_clone
 
-        
-
         if self.rank == 0 or self.rank == 1:
             this_model.eval()
             
