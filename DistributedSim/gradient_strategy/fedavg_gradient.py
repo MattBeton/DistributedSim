@@ -78,6 +78,7 @@ class FedAvgGradient(GradientStrategy):
                     [p for p in self.wrapped_model.parameters() if p.requires_grad],
                 self.curv_dataloader,
                 fisher_type=FisherType.FORWARD_ONLY if self.gradient_config.forward_only else FisherType.MC,
+                separate_weight_and_bias=False,
                 #kfac_approx=KFACType.REDUCE,
                 check_deterministic=False,
                 progressbar=True
@@ -92,15 +93,22 @@ class FedAvgGradient(GradientStrategy):
                 reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
                 if self.rank == 0:
                     param.data /= self.config.num_nodes
-        elif self.gradient_config.merge_method == 'curv0':
+        elif self.gradient_config.merge_method in ('curv0', 'curv1'):
             fisher = self._fisher()
 
             # flatten and convert to numpy
             theta = nn.utils.parameters_to_vector((p for p in self.model.parameters() if p.requires_grad))
             theta = theta.cpu().detach().numpy()
 
-            rhs = fisher.to_scipy() @ theta
-            #rhs = sum(fisher.to_scipy() @ theta for fisher, theta in zip(fishers, thetas))
+            USE_EXACT_DAMPING = True
+            damping = self.gradient_config.damping
+
+            # RHS of Fisher merge
+
+            if self.gradient_config.merge_method == 'curv0':
+                rhs = fisher.to_scipy() @ theta
+            else: # curv1
+                rhs = fisher.to_scipy() @ theta + damping * theta
 
             # Reduce and invert
             fisher_dict = fisher.state_dict()
@@ -109,16 +117,9 @@ class FedAvgGradient(GradientStrategy):
                 all_reduce(in_mat)
                 in_mat /= self.config.num_nodes
                 fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
-            #for key in fisher_dict['gradient_covariances'].keys():
-            #    all_reduce(fisher_dict['gradient_covariances'][key].data)
+
             fisher.load_state_dict(fisher_dict)
 
-            USE_EXACT_DAMPING = False
-            damping = 0.1
-            # if self.gradient_config.damping_meantrick:
-            #     damping = self.gradient_config.damping
-            # else:
-            #     damping = self.gradient_config.damping * fisher.diag().mean()
             fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping, use_exact_damping=USE_EXACT_DAMPING, use_heuristic_damping=self.gradient_config.damping_meantrick) # FIX
 
             fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
@@ -127,8 +128,14 @@ class FedAvgGradient(GradientStrategy):
             theta_fisher = vector_to_parameter_list(
                 torch.from_numpy(fisher_weighted_params), params
             )
-            for theta, param in zip(theta_fisher, params):
-                param.data = theta.to(param.device).to(param.dtype).data
+            for theta, (name, param) in zip(theta_fisher, [(n, p) for n, p in self.model.named_parameters() if p.requires_grad]):
+                if self.gradient_config.skip_embed_curv and (('wte' in name) or ('wpe' in name) or ('lm_head' in name)):
+                    print(f"Using naive merging for: ", name)
+                    reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
+                    if self.rank == 0:
+                        param.data /= self.config.num_nodes
+                else:
+                    param.data = theta.to(param.device).to(param.dtype).data
         elif self.gradient_config.merge_method == 'curv1':
             raise NotImplementedError(f"CURV1")
             fisher = self._fisher()
