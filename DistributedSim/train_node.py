@@ -42,9 +42,11 @@ class TrainNode:
         self.model.transformer.wte.weight = nn.Parameter(
             data=self.model.transformer.wte.weight.data.detach().clone()
         )
-        self.model.transformer.wte.weight.requires_grad = False
 
+        self.model.transformer.wte.weight.requires_grad = False
         self.model.transformer.wpe.weight.requires_grad = False
+        #self.model.transformer.wte.weight.requires_grad = False
+        #self.model.transformer.wpe.weight.requires_grad = False
 
         #self.model.lm_head.weight.requires_grad = False
 

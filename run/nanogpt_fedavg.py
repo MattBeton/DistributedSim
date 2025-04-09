@@ -21,6 +21,10 @@ def main():
     parser.add_argument('--outer_lr', type=float, default=1.0)
     parser.add_argument('--merge_method', type=str, default='mean')
     parser.add_argument('--sync_opt_state', action='store_true')
+    parser.add_argument('--damping_meantrick', action='store_true')
+    parser.add_argument('--forward_only', action='store_true')
+    parser.add_argument('--damping', type=float, default=0.01)
+    parser.add_argument('--skip_embed_curv', action='store_true')
 
     args = parser.parse_args()
 
@@ -33,6 +37,10 @@ def main():
     config.gradient_config.outer_optimizer_cls = torch.optim.SGD
     config.gradient_config.sync_opt_state = args.sync_opt_state
     config.gradient_config.merge_method = args.merge_method
+    config.gradient_config.damping = args.damping
+    config.gradient_config.damping_meantrick = args.damping_meantrick
+    config.gradient_config.forward_only = args.forward_only
+    config.gradient_config.skip_embed_curv = args.skip_embed_curv
     config.gradient_config.outer_optimizer_kwargs = {
         'lr': args.outer_lr,
     }
