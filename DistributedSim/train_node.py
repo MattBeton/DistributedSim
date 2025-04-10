@@ -38,6 +38,7 @@ class TrainNode:
         self.config.gpt_config.vocab_size = self.vocab_size
         
         self.model = self.config.model_class(self.config.gpt_config).to(self.device)
+
         # Remove weight tying as this will break the parameter-to-layer detection
         self.model.transformer.wte.weight = nn.Parameter(
             data=self.model.transformer.wte.weight.data.detach().clone()
@@ -45,8 +46,6 @@ class TrainNode:
 
         self.model.transformer.wte.weight.requires_grad = False
         self.model.transformer.wpe.weight.requires_grad = False
-        #self.model.transformer.wte.weight.requires_grad = False
-        #self.model.transformer.wpe.weight.requires_grad = False
 
         #self.model.lm_head.weight.requires_grad = False
 

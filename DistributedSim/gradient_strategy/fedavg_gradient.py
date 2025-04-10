@@ -1,6 +1,7 @@
 import torch.distributed as dist
 from copy import deepcopy
 
+import numpy as np
 from torch import nn
 from torch.nn import utils as nn_utils
 import torch
@@ -79,6 +80,7 @@ class FedAvgGradient(GradientStrategy):
                 self.curv_dataloader,
                 fisher_type=FisherType.FORWARD_ONLY if self.gradient_config.forward_only else FisherType.MC,
                 separate_weight_and_bias=False,
+                #num_per_example_loss_terms=100,
                 #kfac_approx=KFACType.REDUCE,
                 check_deterministic=False,
                 progressbar=True
@@ -98,22 +100,41 @@ class FedAvgGradient(GradientStrategy):
 
             # flatten and convert to numpy
             theta = nn.utils.parameters_to_vector((p for p in self.model.parameters() if p.requires_grad))
-            theta = theta.cpu().detach().numpy()
+            theta = theta.detach()
+            #theta = theta.cpu().detach().numpy()
 
-            USE_EXACT_DAMPING = True
+            USE_EXACT_DAMPING = not self.gradient_config.damping_meantrick
             damping = self.gradient_config.damping
 
             # RHS of Fisher merge
+            #rhs = fisher.to_scipy() @ theta
+            rhs = fisher @ theta #.clone()
+            #np.save("rhs.npy", rhs)
+            #np.save("theta.npy", theta)
+            torch.save(rhs, 'rhs.pt')
+            torch.save(theta, 'theta.pt')
 
+            #print('mae', np.mean(np.abs(rhs - theta)))
+            print('mae', torch.mean(torch.abs(rhs - theta)))
             if self.gradient_config.merge_method == 'curv0':
-                rhs = fisher.to_scipy() @ theta
+                pass
             else: # curv1
-                rhs = fisher.to_scipy() @ theta + damping * theta
+                rhs = rhs + damping * theta
+
+            #rhs = torch.tensor(rhs)
+
+            all_reduce(rhs)
+            rhs /= self.config.num_nodes
+
+            #rhs = rhs.numpy()
 
             # Reduce and invert
             fisher_dict = fisher.state_dict()
             for key in fisher_dict['input_covariances'].keys():
                 in_mat = fisher_dict['input_covariances'][key].clone().to(self.device)
+                torch.save(fisher_dict['input_covariances'][key], f"{self.rank}-{key}-A.pt")
+                torch.save(fisher_dict['gradient_covariances'][key], f"{self.rank}-{key}-G.pt")
+
                 all_reduce(in_mat)
                 in_mat /= self.config.num_nodes
                 fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
@@ -122,11 +143,15 @@ class FedAvgGradient(GradientStrategy):
 
             fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping, use_exact_damping=USE_EXACT_DAMPING, use_heuristic_damping=self.gradient_config.damping_meantrick) # FIX
 
-            fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
+            #fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
+            fisher_weighted_params = fisher_sum_inv @ rhs
 
             params = [p for p in self.model.parameters() if p.requires_grad]
+            # theta_fisher = vector_to_parameter_list(
+            #     torch.from_numpy(fisher_weighted_params), params
+            # )
             theta_fisher = vector_to_parameter_list(
-                torch.from_numpy(fisher_weighted_params), params
+                fisher_weighted_params, params
             )
             for theta, (name, param) in zip(theta_fisher, [(n, p) for n, p in self.model.named_parameters() if p.requires_grad]):
                 if self.gradient_config.skip_embed_curv and (('wte' in name) or ('wpe' in name) or ('lm_head' in name)):
@@ -154,8 +179,9 @@ class FedAvgGradient(GradientStrategy):
             for (name, param), (master_name, master_param) in zip(self.model.named_parameters(), self.master_model.named_parameters()):
                 assert name == master_name, f"{name} != {master_name}?"
                 if param.requires_grad:
-                    master_param_data = master_param.data.to(param.device)
-                    param_grad = param.data - master_param_data
+                    #master_param_data = master_param.data.to(param.device)
+                    #param_grad = param.data - master_param_data
+                    param_data = param.daga
 
                     beta1, beta2 = 0.9, 0.999
                     exp_avg = self.optim.state[param]['exp_avg']
@@ -168,9 +194,10 @@ class FedAvgGradient(GradientStrategy):
 
                     var = torch.sqrt(corr2) / corr1
 
-                    E = 10.0 * torch.mean(var)
+                    #E = 10.0 * torch.mean(var)
+                    E = 1e-8
 
-                    param_grad.mul_(var + E)
+                    param_data.mul_(var + E)
 
                     all_reduce(exp_avg, op=dist.ReduceOp.SUM)
                     exp_avg /= self.config.num_nodes
@@ -181,9 +208,9 @@ class FedAvgGradient(GradientStrategy):
                     corr2 = exp_avg_sq / bias_correction2
                     var = torch.sqrt(corr2) / corr1
 
-                    param_grad.div_(var + E)
+                    param_data.div_(var + E)
 
-                    param.data = master_param_data + param_grad
+                    param.data = param_data #master_param_data + param_grad
                 else:
                     assert torch.isclose(param, master_param.to(param.device)).all()
         else:
@@ -244,5 +271,9 @@ class FedAvgGradient(GradientStrategy):
 
 
         super().step()
+
+        # sync weights that would otherwise have been shared
+        self.model.transformer.wte.weight.data.copy_(0.5 * (self.model.transformer.wte.weight.data + self.model.lm_head.weight.data))
+        self.model.lm_head.weight.data.copy_(self.model.transformer.wte.weight.data)
 
         self.local_step += 1
