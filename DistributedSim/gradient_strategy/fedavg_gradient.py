@@ -11,6 +11,7 @@ from .communicate import *
 
 from curvlinops import CGInverseLinearOperator, GGNLinearOperator
 from curvlinops import KFACInverseLinearOperator, KFACLinearOperator
+from curvlinops import EKFACLinearOperator
 from curvlinops import FisherType, KFACType
 from backpack.utils.convert_parameters import vector_to_parameter_list
 
@@ -69,19 +70,18 @@ class FedAvgGradient(GradientStrategy):
             self.curv_dataloader = None
 
     def _fisher(self) -> None:
-        loss_function = nn.CrossEntropyLoss(ignore_index=-1)
-
         self.wrapped_model.eval()
 
-        fisher = KFACLinearOperator(
+        loss_function = nn.CrossEntropyLoss(ignore_index=-1)
+
+        fisher = EKFACLinearOperator(
                 self.wrapped_model,
                 loss_function,
                     [p for p in self.wrapped_model.parameters() if p.requires_grad],
                 self.curv_dataloader,
                 fisher_type=FisherType.FORWARD_ONLY if self.gradient_config.forward_only else FisherType.MC,
+                #fisher_type=FisherType.EMPIRICAL,
                 separate_weight_and_bias=False,
-                #num_per_example_loss_terms=100,
-                #kfac_approx=KFACType.REDUCE,
                 check_deterministic=False,
                 progressbar=True
             ) #.to_scipy()
@@ -125,6 +125,7 @@ class FedAvgGradient(GradientStrategy):
 
             all_reduce(rhs)
             rhs /= self.config.num_nodes
+            torch.save(rhs, 'reduced_rhs.pt')
 
             #rhs = rhs.numpy()
 
@@ -132,19 +133,46 @@ class FedAvgGradient(GradientStrategy):
             fisher_dict = fisher.state_dict()
             for key in fisher_dict['input_covariances'].keys():
                 in_mat = fisher_dict['input_covariances'][key].clone().to(self.device)
-                torch.save(fisher_dict['input_covariances'][key], f"{self.rank}-{key}-A.pt")
-                torch.save(fisher_dict['gradient_covariances'][key], f"{self.rank}-{key}-G.pt")
 
                 all_reduce(in_mat)
                 in_mat /= self.config.num_nodes
                 fisher_dict['input_covariances'][key].copy_(in_mat.cpu())
 
+                torch.save(in_mat.detach().cpu(), f"{self.rank}-{key}-A.pt")
+
+            for key in fisher_dict['gradient_covariances'].keys():
+                gradient_mat = fisher_dict['gradient_covariances'][key]
+
+                if type(gradient_mat) == tuple:
+                    #if self.gradient_config.skip_embed_curv and (('wte' in key) or ('wpe' in key) or ('lm_head' in key)):
+                    #    pass
+                    #else:
+                    print(f"Weird in mat for key {key}: {gradient_mat}")
+                    v = torch.ones(1, device=self.device) * gradient_mat[2] #.item()
+                    print(v.device)
+                    all_reduce(v)
+                    v /= self.config.num_nodes
+                    gradient_mat = ("IDENTITY", gradient_mat[1], v.item())
+                else:
+                    gradient_mat = gradient_mat.clone().to(self.device)
+                    all_reduce(gradient_mat)
+                    gradient_mat /= self.config.num_nodes
+                    fisher_dict['gradient_covariances'][key].copy_(gradient_mat.cpu())
+                    torch.save(gradient_mat.detach().cpu(), f"{self.rank}-{key}-G.pt")
+
+
             fisher.load_state_dict(fisher_dict)
 
-            fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping, use_exact_damping=USE_EXACT_DAMPING, use_heuristic_damping=self.gradient_config.damping_meantrick) # FIX
+            fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping,
+                                                       use_exact_damping=USE_EXACT_DAMPING,
+                                                       #use_heuristic_damping=self.gradient_config.damping_meantrick,
+                                                       use_heuristic2_damping=True,
+                                                       min_damping=0.0) # FIX
 
             #fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
             fisher_weighted_params = fisher_sum_inv @ rhs
+            
+            torch.save(fisher_weighted_params, 'final.pt')
 
             params = [p for p in self.model.parameters() if p.requires_grad]
             # theta_fisher = vector_to_parameter_list(
@@ -154,17 +182,26 @@ class FedAvgGradient(GradientStrategy):
                 fisher_weighted_params, params
             )
             for theta, (name, param) in zip(theta_fisher, [(n, p) for n, p in self.model.named_parameters() if p.requires_grad]):
+                skip = False
+                if self.gradient_config.skip_mlp_fc and ('mlp.c_fc' in name):
+                    skip = True
+                if self.gradient_config.skip_mlp_proj and ('mlp.c_proj' in name):
+                    skip = True
+                if self.gradient_config.skip_attn_attn and ('attn.c_attn' in name):
+                    skip = True
+                if self.gradient_config.skip_attn_proj and ('attn.c_proj' in name):
+                    skip = True
                 if self.gradient_config.skip_embed_curv and (('wte' in name) or ('wpe' in name) or ('lm_head' in name)):
-                    print(f"Using naive merging for: ", name)
+                    skip = True
+
+                if skip:
+                    print(f"Naive merging : ", name)
                     reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
                     if self.rank == 0:
                         param.data /= self.config.num_nodes
                 else:
-                    param.data = theta.to(param.device).to(param.dtype).data
-        elif self.gradient_config.merge_method == 'curv1':
-            raise NotImplementedError(f"CURV1")
-            fisher = self._fisher()
-
+                    print(f"Fisher merging : ", name)
+                    param.data.copy_(theta.to(param.device).to(param.dtype).data)
 
         elif self.gradient_config.merge_method == 'fisher1':
             for (name, param), (master_name, master_param) in zip(self.model.named_parameters(), self.master_model.named_parameters()):
@@ -251,11 +288,11 @@ class FedAvgGradient(GradientStrategy):
         self.optim.step()
 
         # Outer step if needed.
-        if self.local_step == 0:
+        if (self.local_step == self.gradient_config.outer_warmup):
             if self.gradient_config.sync_opt_state:
                 self._sync_opt_state()
 
-        if self.local_step % self.gradient_config.outer_interval == 0 and self.local_step > 0:
+        if self.local_step % self.gradient_config.outer_interval == 0 and (self.local_step > self.gradient_config.outer_warmup):
             self._reduce_models()
 
             if self.rank == 0:

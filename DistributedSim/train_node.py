@@ -94,6 +94,13 @@ class TrainNode:
         val_start = (1 - self.config.val_proportion)
         val_end = 1.0
 
+        if self.config.same_curv_data: # with this setting, the curvature always uses the split of rank=0
+            curv_start = (1 - self.config.val_proportion) * 0 / self.config.num_nodes
+            curv_end = (1 - self.config.val_proportion) * (0 + 1) / self.config.num_nodes
+        else:
+            curv_start = (1 - self.config.val_proportion) * self.rank / self.config.num_nodes
+            curv_end = (1 - self.config.val_proportion) * (self.rank + 1) / self.config.num_nodes
+
         self.train_dataset, self.vocab_size = get_dataset(dataset_id,
                                              train_start * self.config.dataset_proportion,
                                              train_end * self.config.dataset_proportion,
@@ -107,10 +114,10 @@ class TrainNode:
                                              char=self.config.char_dataset)
 
         self.curv_dataset, self.vocab_size = get_dataset(dataset_id,
-                                             train_start * self.config.dataset_proportion,
-                                             train_end * self.config.dataset_proportion,
+                                             curv_start * self.config.dataset_proportion,
+                                             curv_end * self.config.dataset_proportion,
                                              block_size=self.config.block_size,
-                                             char=self.config.char_dataset,
+                                             char=self.config.char_dataset)
                                              just_one_chunk=True)
 
 
