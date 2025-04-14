@@ -74,7 +74,7 @@ class FedAvgGradient(GradientStrategy):
 
         loss_function = nn.CrossEntropyLoss(ignore_index=-1)
 
-        fisher = EKFACLinearOperator(
+        fisher = KFACLinearOperator(
                 self.wrapped_model,
                 loss_function,
                     [p for p in self.wrapped_model.parameters() if p.requires_grad],
@@ -95,20 +95,26 @@ class FedAvgGradient(GradientStrategy):
                 reduce(param.data, dst=0, op=dist.ReduceOp.SUM)
                 if self.rank == 0:
                     param.data /= self.config.num_nodes
+
         elif self.gradient_config.merge_method in ('curv0', 'curv1'):
             fisher = self._fisher()
 
             # flatten and convert to numpy
             theta = nn.utils.parameters_to_vector((p for p in self.model.parameters() if p.requires_grad))
-            theta = theta.detach()
+            theta = theta.detach().clone()
             #theta = theta.cpu().detach().numpy()
+
+            # theta_avg = theta.clone()
+            # all_reduce(theta_avg)
+            # theta_avg /= self.config.num_nodes
 
             USE_EXACT_DAMPING = not self.gradient_config.damping_meantrick
             damping = self.gradient_config.damping
 
             # RHS of Fisher merge
             #rhs = fisher.to_scipy() @ theta
-            rhs = fisher @ theta #.clone()
+            #rhs = fisher @ (theta - theta_avg) #.clone()
+            rhs = fisher @ theta
             #np.save("rhs.npy", rhs)
             #np.save("theta.npy", theta)
             torch.save(rhs, 'rhs.pt')
@@ -165,8 +171,8 @@ class FedAvgGradient(GradientStrategy):
 
             fisher_sum_inv = KFACInverseLinearOperator(fisher, damping=damping,
                                                        use_exact_damping=USE_EXACT_DAMPING,
-                                                       #use_heuristic_damping=self.gradient_config.damping_meantrick,
-                                                       use_heuristic2_damping=True,
+                                                       use_heuristic_damping=self.gradient_config.damping_meantrick,
+                                                       #use_heuristic2_damping=True,
                                                        min_damping=0.0) # FIX
 
             #fisher_weighted_params = fisher_sum_inv.to_scipy() @ rhs
@@ -290,9 +296,11 @@ class FedAvgGradient(GradientStrategy):
         # Outer step if needed.
         if (self.local_step == self.gradient_config.outer_warmup):
             if self.gradient_config.sync_opt_state:
+                print("SYNCING")
                 self._sync_opt_state()
 
         if self.local_step % self.gradient_config.outer_interval == 0 and (self.local_step > self.gradient_config.outer_warmup):
+            print("REDUCING")
             self._reduce_models()
 
             if self.rank == 0:
@@ -305,12 +313,11 @@ class FedAvgGradient(GradientStrategy):
 
             if self.gradient_config.sync_opt_state:
                 self._sync_opt_state()
+                # sync weights that would otherwise have been shared
+                self.model.transformer.wte.weight.data.copy_(0.5 * (self.model.transformer.wte.weight.data + self.model.lm_head.weight.data))
+                self.model.lm_head.weight.data.copy_(self.model.transformer.wte.weight.data)
 
 
         super().step()
-
-        # sync weights that would otherwise have been shared
-        self.model.transformer.wte.weight.data.copy_(0.5 * (self.model.transformer.wte.weight.data + self.model.lm_head.weight.data))
-        self.model.lm_head.weight.data.copy_(self.model.transformer.wte.weight.data)
 
         self.local_step += 1

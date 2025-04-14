@@ -26,6 +26,12 @@ def main():
     parser.add_argument('--damping', type=float, default=0.01)
     parser.add_argument('--skip_embed_curv', action='store_true')
 
+    parser.add_argument('--skip_mlp_fc', action='store_true')
+    parser.add_argument('--skip_mlp_proj', action='store_true')
+    parser.add_argument('--skip_attn_attn', action='store_true')
+    parser.add_argument('--skip_attn_proj', action='store_true')
+    parser.add_argument("--outer_warmup", type=int, default=1000)
+
     args = parser.parse_args()
 
     gpt_config = gen_gpt_config(args)
@@ -34,6 +40,7 @@ def main():
 
     config.gradient_class = FedAvgGradient
     config.gradient_config.outer_interval = args.outer_interval
+    config.gradient_config.outer_warmup = args.outer_warmup
     config.gradient_config.outer_optimizer_cls = torch.optim.SGD
     config.gradient_config.sync_opt_state = args.sync_opt_state
     config.gradient_config.merge_method = args.merge_method
@@ -41,6 +48,11 @@ def main():
     config.gradient_config.damping_meantrick = args.damping_meantrick
     config.gradient_config.forward_only = args.forward_only
     config.gradient_config.skip_embed_curv = args.skip_embed_curv
+    config.gradient_config.skip_mlp_fc = args.skip_mlp_fc
+    config.gradient_config.skip_mlp_proj = args.skip_mlp_proj
+    config.gradient_config.skip_attn_attn = args.skip_attn_attn
+    config.gradient_config.skip_attn_proj = args.skip_attn_proj
+
     config.gradient_config.outer_optimizer_kwargs = {
         'lr': args.outer_lr,
     }

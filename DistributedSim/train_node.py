@@ -117,7 +117,7 @@ class TrainNode:
                                              curv_start * self.config.dataset_proportion,
                                              curv_end * self.config.dataset_proportion,
                                              block_size=self.config.block_size,
-                                             char=self.config.char_dataset)
+                                             char=self.config.char_dataset,
                                              just_one_chunk=True)
 
 

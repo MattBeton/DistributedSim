@@ -56,6 +56,7 @@ def arg_parse():
     parser.add_argument("--dataset_proportion", type=float, default=1.0)
     parser.add_argument("--val_proportion", type=float, default=0.1)
     parser.add_argument("--curv_proportion", type=float, default=0.02)
+    parser.add_argument("--same_curv_data", action='store_true')
 
     return parser
 
@@ -94,13 +95,17 @@ def config_gen(args, gpt_config):
         dataset_proportion=args.dataset_proportion,
         val_proportion=args.val_proportion,
         curv_proportion=args.curv_proportion,
+        same_curv_data=args.same_curv_data,
 
         gradient_config=GradientConfig(
             #optimizer_class=torch.optim.AdamW,
             optimizer_class=CustomAdamW,
+            #optimizer_class=torch.optim.SGD,
             optimizer_kwargs={
                 'lr': args.lr,
-                'centered': args.centered,
+                #'momentum': 0.9,
+                #'centered': args.centered,
+                'weight_decay': 1e-3,
             },
             max_norm=args.max_norm,
             lr_scheduler='lambda_cosine',
