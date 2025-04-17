@@ -13,6 +13,29 @@ from DistributedSim.dataset.build_dataset import *
 from DistributedSim.optim.custom_adamw import CustomAdamW
 
 
+class CombinedOptimizer:
+    def __init__(self, optimizers):
+        assert all(len(opt.param_groups) == 1 for opt in optimizers)
+        self.optimizers = optimizers
+        self.param_groups = [pg for opt in self.optimizers for pg in opt.param_groups]
+        self.base_lrs = [opt.param_groups[0]['lr'] for opt in self.optimizers]
+
+    def step(self):
+        for opt in self.optimizers:
+            opt.step()
+
+    def zero_grad(self, **kwargs):
+        for opt in self.optimizers:
+            opt.zero_grad(**kwargs)
+
+    def scale_lrs(self, lr_scale):
+        for base_lr, opt in zip(self.base_lrs, self.optimizers):
+            opt.param_groups[0]['lr'] = base_lr * lr_scale
+
+    def state_dict(self):
+        return [opt.state_dict() for opt in self.optimizers]
+
+
 def gen_wandb_name(args):
     name = f"bs{args.batch_size}_lr{args.lr:.0e}_warm{args.warmup_steps}_max{args.max_steps}"
     return name
@@ -99,14 +122,18 @@ def config_gen(args, gpt_config):
 
         gradient_config=GradientConfig(
             #optimizer_class=torch.optim.AdamW,
-            optimizer_class=CustomAdamW,
-            #optimizer_class=torch.optim.SGD,
-            optimizer_kwargs={
-                'lr': args.lr,
-                #'momentum': 0.9,
-                #'centered': args.centered,
-                'weight_decay': 1e-3,
-            },
+            #optimizer_class=CustomAdamW,
+            # optimizer_class = CombinedOptimizer,
+            # optimizer_kwargs = {'optimizers': [
+            #      torch.optim.AdamW(self.lm_head.parameters(), lr=0.0018, betas=(0.9, 0.95), weight_decay=0),
+            #      SOAP(self.transformer.h.parameters(), lr=learning_rate, betas=(.95, .95), weight_decay=0, precondition_frequency=10)
+            # ]},
+            # optimizer_kwargs={
+            #     'lr': args.lr,
+            #     #'momentum': 0.9,
+            #     #'centered': args.centered,
+            #     'weight_decay': 1e-3,
+            # },
             max_norm=args.max_norm,
             lr_scheduler='lambda_cosine',
             warmup_steps=args.warmup_steps,

@@ -21,8 +21,8 @@ class GradientConfig:
                  **kwargs):
         self.optimizer_class = optimizer_class
         self.optimizer_kwargs = optimizer_kwargs
-        self.lr_scheduler = lr_scheduler
-        self.lr_scheduler_kwargs = lr_scheduler_kwargs
+        #self.lr_scheduler = lr_scheduler
+        #self.lr_scheduler_kwargs = lr_scheduler_kwargs
         self.max_local_steps = max_local_steps
         self.max_norm = max_norm
 
@@ -48,10 +48,10 @@ class GradientStrategy:
     def step(self):
         self.nbytes = 0
 
-        if self.scheduler is not None:
-            self.scheduler.step()
-            if self.rank == 0:
-                self.logger.log_lr(self.scheduler.get_last_lr()[0])
+        # if self.scheduler is not None:
+        #     self.scheduler.step()
+        #     if self.rank == 0:
+        #         self.logger.log_lr(self.scheduler.get_last_lr()[0])
 
     def zero_grad(self):
         self.optim.zero_grad()

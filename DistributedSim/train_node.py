@@ -134,10 +134,10 @@ class TrainNode:
 
         self.val_dataloader = DataLoader(self.val_dataset, 
                           batch_size=self.config.batch_size,
-                          shuffle=True)
+                          shuffle=False)
 
         self.curv_dataloader = DataLoader(self.curv_dataset,
-                          batch_size=self.config.batch_size,
+                          batch_size=8, #self.config.batch_size,
                           shuffle=False,
                           collate_fn=collate_fn_flatten_target)
 
@@ -157,19 +157,19 @@ class TrainNode:
         torch.save(self.model.state_dict(), os.path.join(save_path, filename))
 
     def _get_batch(self, eval=False):
-        if not eval or self.val_data_iter is None:
+        if eval:
+            try:
+                x, y = next(self.val_data_iter)
+            except StopIteration:
+                self.val_data_iter = iter(self.val_dataloader)
+                x, y = next(self.val_data_iter)
+        else:
             try:
                 x, y = next(self.train_data_iter)
             except StopIteration:
                 self.epoch += 1
                 self.train_data_iter = iter(self.train_dataloader)
                 x, y = next(self.train_data_iter)
-        else:
-            try:
-                x, y = next(self.val_data_iter)
-            except StopIteration:
-                self.val_data_iter = iter(self.val_dataloader)
-                x, y = next(self.val_data_iter)
 
         x, y = x.to(self.device), y.to(self.device)
 
@@ -196,80 +196,70 @@ class TrainNode:
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 param.grad /= (len(x) / minibatch_size)
+
+        loss = loss.detach()
+        torch.cuda.empty_cache()
         
         self.gradient_strategy.step()
 
         if self.rank == 0:
             self.logger.log_train(loss=loss.item())
 
+        world_size = dist.get_world_size()
+        gathered = [torch.zeros_like(loss) for _ in range(world_size)] if dist.get_rank() == 0 else None
+        dist.gather(loss.detach(), gather_list=gathered, dst=0)
+        if self.rank == 0:
+            for rank, train_loss in enumerate(gathered):
+                self.logger.log_pure(loss=train_loss.cpu().item(), name=f"train_loss_{rank}")
+
         if self.config.checkpoint_interval and self.local_step % self.config.checkpoint_interval == 0:
             self._save_checkpoint()
 
-    def _evaluate(self):
-        model_clone = self.config.model_class(self.config.gpt_config).to(self.device)
-        model_clone.load_state_dict(copy.deepcopy(self.model.state_dict()))
 
-        for name, param in model_clone.named_parameters():
-            all_reduce(param.data, op=dist.ReduceOp.SUM)
-            param.data = param.data / dist.get_world_size()
+    def _evaluate_loss(self):
+        self.model.eval()
+        
+        loss_total = 0
 
+        with torch.no_grad():
+            num_evals = int(self.config.val_size / self.config.batch_size)
+            for val_i, (x, y) in enumerate(self.val_dataloader): # Deterministic on purpose: always same first batches!
+                if val_i >= num_evals:
+                    break
+
+                minibatch_size = self.config.local_minibatch_size if self.config.local_minibatch_size else self.config.batch_size
+                for i in range(0, len(x), minibatch_size):
+                    x_batch = x[i:i+minibatch_size].to(self.device)
+                    y_batch = y[i:i+minibatch_size].to(self.device)
+
+                    if self.config.autocast:
+                        with torch.autocast(device_type=self.config.device_type, dtype=torch.bfloat16):
+                            _, loss = self.model(x_batch, y_batch)
+                    else:
+                        _, loss = self.model(x_batch, y_batch)
+
+                    loss_total += loss.item() / (self.config.batch_size // minibatch_size)
+
+            loss_total /= num_evals
+
+        return loss_total
+
+
+    def _log(self, name, number):
+        world_size = dist.get_world_size()
+        gathered = [torch.zeros(1, device=self.device) for _ in range(world_size)] if dist.get_rank() == 0 else None
+        dist.gather(torch.ones(1, device=self.device) * number , gather_list=gathered, dst=0)
         if self.rank == 0:
-            # For rank 0, we will calculate the local loss
-            this_model = self.model
+            for rank, value in enumerate(gathered):
+                self.logger.log_pure(loss=value.cpu().item(), name=f'{name}_{rank}')
 
-        if self.rank == 1:
-            # For rank 1, we want to calculate the average model loss
-            this_model = model_clone
-
-        if self.rank == 0 or self.rank == 1:
-            this_model.eval()
-            
-            loss_total = 0
-
-            with torch.no_grad():
-                for _ in range(int(self.config.val_size / self.config.batch_size)):
-                    x, y = self._get_batch(eval=True)
-
-                    minibatch_size = self.config.local_minibatch_size if self.config.local_minibatch_size else self.config.batch_size
-                    for i in range(0, len(x), minibatch_size):
-                        x_batch = x[i:i+minibatch_size]
-                        y_batch = y[i:i+minibatch_size]
-
-                        if self.config.autocast:
-                            with torch.autocast(device_type=self.config.device_type, dtype=torch.bfloat16):
-                                _, loss = this_model(x_batch, y_batch)
-                        else:
-                            _, loss = this_model(x_batch, y_batch)
-
-                        loss_total += loss.item() / (self.config.batch_size // minibatch_size)
-
-        # Rank 0 logs the local evaluation.
-        if self.rank == 0:
-            # print(f"LOCAL: Eval Loss: {loss_total / int(self.config.val_size / self.config.batch_size):.4f}, "
-            #         f"Eval Perplexity: {math.exp(loss_total / int(self.config.val_size / self.config.batch_size)):.4f}")
-            self.logger.log_pure(loss=loss_total / int(self.config.val_size / self.config.batch_size), 
-                                    name='val_local')
-
-        # Broadcast the global loss from rank 1 to all ranks.
-        if self.config.num_nodes > 1:
-            # All ranks create a dummy tensor to participate.
-            global_loss_tensor = torch.empty(1, device=next(self.model.parameters()).device)
-            if self.rank == 1:
-                global_loss_tensor[0] = loss_total / int(self.config.val_size / self.config.batch_size)
-            broadcast(global_loss_tensor, src=1)
-
-            # Only rank 0 logs the global evaluation.
-            if self.rank == 0:
-                global_loss = global_loss_tensor.item()
-                # print(f"GLOBAL: Eval Loss: {global_loss:.4f}, Eval Perplexity: {math.exp(global_loss):.4f}")
-                self.logger.log_pure(loss=global_loss, name='global')
-
-        del model_clone
 
     def train(self):
         while self.local_step < self.max_steps:
-            if self.local_step % self.config.eval_interval == 0:
-                self._evaluate()
+            do_eval = self.local_step % self.config.eval_interval == 0
+            if do_eval:
+                eval_loss = self._evaluate_loss()
+                self._log('eval_loss', eval_loss)
 
             self._train_step()
 
@@ -277,10 +267,12 @@ class TrainNode:
             if self.rank == 0:
                 self.logger.increment_step()
 
-            # if self.local_step == 5:
-            #     break
-
             dist.barrier()
 
+            if do_eval:
+                eval_loss_after_merge = self._evaluate_loss()
+                merge_gain = eval_loss_after_merge - eval_loss
+                self._log('merge_gain', merge_gain)
 
-        self._evaluate()
+        eval_loss = self._evaluate_loss()
+        self._log('eval_loss', eval_loss)
