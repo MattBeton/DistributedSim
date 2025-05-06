@@ -37,8 +37,8 @@ def arg_parse():
     parser.add_argument("--local_minibatch_size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--max_norm", type=float, default=1.0)
-    parser.add_argument("--warmup_steps", type=int, default=1000)
-    parser.add_argument("--max_steps", type=int, default=10000)
+    parser.add_argument("--warmup_steps", type=int, default=10000)
+    parser.add_argument("--max_steps", type=int, default=30000)
     parser.add_argument("--cosine_anneal", action='store_true')
     parser.add_argument("--autocast", action='store_true')
 

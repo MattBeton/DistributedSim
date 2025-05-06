@@ -28,6 +28,8 @@ def main():
 
     config = config_gen(args, gpt_config)
 
+    config.num_nodes = 2
+
     config.gradient_class = SPARTAGradient
     config.gradient_config.p_sparta = args.p_sparta
 
