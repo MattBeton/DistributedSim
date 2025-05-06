@@ -6,3 +6,5 @@ checkpoints/
 DistributedSim.egg-info/
 cache/
 remote/
+
+results/
