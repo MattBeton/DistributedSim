@@ -204,6 +204,20 @@ class AblangWrapper(torch.nn.Module):
     # Standard CrossEntropyLoss, ignores index -100 by default
     self.CrossEntropyLoss = torch.nn.CrossEntropyLoss() 
 
+  def get_num_params(self, non_embedding=True):
+    """
+    Return the number of parameters in the model.
+    For non-embedding count (default), the parameters of the embedding layer are not counted.
+    This is similar to how ESM-2 reports model sizes.
+    """
+    n_params = sum(p.numel() for p in self.ablang_model.parameters() if p.requires_grad)
+    if non_embedding:
+        # Assuming aa_embed_layer is the name of the embedding layer in AbRep
+        # and AbRep is accessible as self.ablang_model.AbRep
+        if hasattr(self.ablang_model, 'AbRep') and hasattr(self.ablang_model.AbRep, 'aa_embed_layer'):
+            n_params -= self.ablang_model.AbRep.aa_embed_layer.weight.numel()
+    return n_params
+
   def fast_collater(self, tokens: torch.Tensor, mask_fraction: float = 0.15):
     """
     Prepares batch for Masked Language Modeling (MLM).
