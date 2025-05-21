@@ -256,7 +256,8 @@ class GPT(nn.Module):
 
         logits = logits.transpose(-1, -2)
         loss = self.criterion(logits, y)
-        return logits, loss
+        # return logits, loss
+        return loss
 
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary

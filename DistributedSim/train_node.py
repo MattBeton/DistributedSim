@@ -33,7 +33,8 @@ class TrainNode:
 
         self.model = self.config.model_class(self.config.model_config).to(self.device)
     
-        print(f"model parameter count: ", self.model.get_num_params() / 1e6)
+        # TODO: Reimplement this
+        # print(f"model parameter count: ", self.model.get_num_params() / 1e6)
 
         ## Ensure all process models share the same params
         if self.config.num_nodes > 1:
@@ -195,8 +196,11 @@ class TrainNode:
                 self.val_data_iter = iter(self.val_dataloader)
                 batch = next(self.val_data_iter)
 
+        # print(batch)
         if isinstance(batch, tuple) or isinstance(batch, list):
             batch = tuple(x.to(self.device) for x in batch)
+        elif isinstance(batch, dict):
+            batch = {k: v.to(self.device) for k, v in batch.items()}
         else:
             batch = batch.to(self.device)
 
@@ -211,9 +215,9 @@ class TrainNode:
             ## TODO: Do we want this?
             if self.config.autocast:
                 with torch.autocast(device_type=self.config.device_type, dtype=torch.bfloat16):
-                    _, loss = self.model(minibatch)
+                    loss = self.model(minibatch)
             else:
-                _, loss = self.model(minibatch)
+                loss = self.model(minibatch)
 
             loss.backward()
 
@@ -260,9 +264,9 @@ class TrainNode:
 
                         if self.config.autocast:
                             with torch.autocast(device_type=self.config.device_type, dtype=torch.bfloat16):
-                                _, loss = this_model(minibatch)
+                                loss = this_model(minibatch)
                         else:
-                            _, loss = this_model(minibatch)
+                            loss = this_model(minibatch)
 
                         loss_total += loss.item() / (self.config.batch_size // self.config.minibatch_size)
 
@@ -452,8 +456,8 @@ class TrainNode:
 
     def train(self):
         while self.local_step < self.max_steps:
-            if self.local_step % self.config.eval_interval == 0:
-                self._evaluate()
+            # if self.local_step % self.config.eval_interval == 0:
+            #     self._evaluate()
             
 
             self._train_step()
