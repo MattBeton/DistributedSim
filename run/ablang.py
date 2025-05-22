@@ -142,7 +142,7 @@ def config_gen(args, model_config):
             block_size=args.block_size,
             dataset_proportion=args.dataset_proportion,
             over_sample_data=args.over_sample_data,
-            model_config=model_config,
+            val_proportion=args.val_proportion,
             cpus=args.cpus,
         ),
         seed=args.seed,
