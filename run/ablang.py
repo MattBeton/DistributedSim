@@ -54,7 +54,7 @@ def arg_parse():
     parser.add_argument("--max_steps", type=int, default=10000)
     parser.add_argument("--cosine_anneal", action="store_true")
     parser.add_argument("--autocast", action="store_true")
-    parser.add_argument("--lr_scheduler", type=str, default="lambda_cosine")
+    parser.add_argument("--lr_scheduler", type=str, default=None)
     
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
     parser.add_argument("--checkpoint_interval", type=int, default=None)
