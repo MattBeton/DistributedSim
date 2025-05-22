@@ -8,7 +8,7 @@ from DistributedSim.sim_config import *
 from DistributedSim.gradient_strategy.gradient_strategy import *
 
 from DistributedSim.dataset.dataset import DatasetConfig
-from DistributedSim.models.ablang.ablang_2.ablang import AbLangConfig, AblangWrapper
+from DistributedSim.models.ablang.ablang_2.ablang import AbLangConfig, AbLang
 from DistributedSim.dataset.ablang.datamodule import AbDataset
 from DistributedSim.models.ablang.ablang_2.tokenizers import ABtokenizer
 
@@ -55,6 +55,7 @@ def arg_parse():
     parser.add_argument("--cosine_anneal", action="store_true")
     parser.add_argument("--autocast", action="store_true")
     parser.add_argument("--lr_scheduler", type=str, default=None)
+    parser.add_argument('--loss_fn', type=str, default="CrossEntropyLoss")
     
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
     parser.add_argument("--checkpoint_interval", type=int, default=None)
@@ -104,7 +105,7 @@ def gen_model_config(args):
 
 def config_gen(args, model_config):
     config = SimConfig(
-        model_class=AblangWrapper,
+        model_class=AbLang,
         model_config=model_config,
 
         num_epochs=args.epochs,

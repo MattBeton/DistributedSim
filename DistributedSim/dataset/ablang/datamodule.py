@@ -308,7 +308,4 @@ class AbDataset(Dataset):
             pad_tkn=self.pad_tkn,
         )
 
-        return {
-            "input": masked_sequences.squeeze(0),
-            "labels": labels.squeeze(0),
-        }
+        return masked_sequences.squeeze(0), labels.squeeze(0)

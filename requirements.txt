@@ -93,3 +93,5 @@ wandb==0.19.5
 wcwidth==0.2.13
 xxhash==3.5.0
 yarl==1.18.3
+rotary-embedding-torch==0.8.6
+mixture-of-experts==0.2.3

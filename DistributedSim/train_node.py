@@ -268,9 +268,9 @@ class TrainNode:
                 with torch.autocast(
                     device_type=self.config.device_type, dtype=torch.bfloat16
                 ):
-                    loss = self.model(minibatch["input"])
+                    loss = self.model(minibatch)
             else:
-                loss = self.model(minibatch["input"])
+                loss = self.model(minibatch)
 
             loss.backward()
 
@@ -323,9 +323,9 @@ class TrainNode:
                                 device_type=self.config.device_type,
                                 dtype=torch.bfloat16,
                             ):
-                                loss = this_model(minibatch["input"])
+                                loss = this_model(minibatch)
                         else:
-                            loss = this_model(minibatch["input"])
+                            loss = this_model(minibatch)
 
                         loss_total += loss.item() / (
                             self.config.batch_size // self.config.minibatch_size
