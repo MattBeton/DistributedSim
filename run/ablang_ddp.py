@@ -8,9 +8,8 @@ from DistributedSim.sim_config import *
 from DistributedSim.gradient_strategy.gradient_strategy import *
 from DistributedSim.gradient_strategy.demo_gradient import *
 
-from DistributedSim.models.ablang.ablang_2.ablang import AbLang, AbLangConfig
-
 from ablang import arg_parse, config_gen, gen_model_config
+
 
 def main():
     parser = arg_parse()
