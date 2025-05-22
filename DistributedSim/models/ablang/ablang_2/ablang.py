@@ -76,6 +76,19 @@ class AbLang(torch.nn.Module):
         "Extracts the trained aa_embeddings."
         return self.AbRep.aa_embed_layer
 
+    def get_num_params(self, non_embedding=True):
+        """
+        Return the number of parameters in the model.
+        For non-embedding count (default), the parameters of the embedding layer are not counted.
+        This is similar to how ESM-2 reports model sizes.
+        """
+        n_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        if non_embedding:
+            # Check if AbRep and its aa_embed_layer exist, which they should based on __init__
+            if hasattr(self, "AbRep") and hasattr(self.AbRep, "aa_embed_layer"):
+                n_params -= self.AbRep.aa_embed_layer.weight.numel()
+        return n_params
+
 
 class AbRep(torch.nn.Module):
     """
