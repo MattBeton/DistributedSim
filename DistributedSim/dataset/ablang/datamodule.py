@@ -296,7 +296,6 @@ class AbDataset(Dataset):
             return {
                 "input": masked_sequences.squeeze(0),
                 "labels": labels.squeeze(0),
-                "sequences": sequence,
             }
 
         masked_sequences, labels = mask_sequences(
@@ -312,5 +311,4 @@ class AbDataset(Dataset):
         return {
             "input": masked_sequences.squeeze(0),
             "labels": labels.squeeze(0),
-            "sequences": sequence,
         }
