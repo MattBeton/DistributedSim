@@ -1,10 +1,8 @@
 import os
-# import numpy as np # No longer needed in the rewritten selection
-import torch # For Subset
-from torch.utils.data import DataLoader, Dataset, Subset # Added Dataset, Subset
+
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from .datacollators import ABcollator
-# Assuming pytorch_lightning as pl is imported elsewhere and available
 
 
 class AbDataset(Dataset):
@@ -69,7 +67,7 @@ class AbDataset(Dataset):
     return self.data[idx]
 
 
-class AbDataModule(pl.LightningDataModule):
+class AbDataModule:
 
   def __init__(self, data_hparams, tokenizer_class): # tokenizer_class is expected
     super().__init__()
@@ -81,32 +79,32 @@ class AbDataModule(pl.LightningDataModule):
     
     self.traincollater = ABcollator(
       self.tokenizer, 
-      pad_tkn = self.data_hparams.pad_tkn,
-      start_tkn = self.data_hparams.start_tkn,
-      end_tkn = self.data_hparams.end_tkn,
-      sep_tkn = self.data_hparams.sep_tkn,
-      mask_tkn = self.data_hparams.mask_tkn,
-      mask_percent=self.data_hparams.mask_percent,
-      mask_variable=self.data_hparams.variable_masking,
-      cdr3_focus=self.data_hparams.cdr3_focus,
-      mask_technique=self.data_hparams.mask_technique,
-      change_percent = self.data_hparams.change_percent,
-      leave_percent = self.data_hparams.leave_percent,
+      # pad_tkn = self.data_hparams.pad_tkn,
+      # start_tkn = self.data_hparams.start_tkn,
+      # end_tkn = self.data_hparams.end_tkn,
+      # sep_tkn = self.data_hparams.sep_tkn,
+      # mask_tkn = self.data_hparams.mask_tkn,
+      # mask_percent=self.data_hparams.mask_percent,
+      # mask_variable=self.data_hparams.variable_masking,
+      # cdr3_focus=self.data_hparams.cdr3_focus,
+      # mask_technique=self.data_hparams.mask_technique,
+      # change_percent = self.data_hparams.change_percent,
+      # leave_percent = self.data_hparams.leave_percent,
     )
     
     self.evalcollater = ABcollator(
       self.tokenizer, 
-      pad_tkn = self.data_hparams.pad_tkn,
-      start_tkn = self.data_hparams.start_tkn,
-      end_tkn = self.data_hparams.end_tkn,
-      sep_tkn = self.data_hparams.sep_tkn,
-      mask_tkn = self.data_hparams.mask_tkn,
-      mask_percent = .15,
-      mask_variable = self.data_hparams.variable_masking,
-      cdr3_focus = 1.,
-      mask_technique = "shotgun",
-      change_percent = .1,
-      leave_percent = .1,
+      # pad_tkn = self.data_hparams.pad_tkn,
+      # start_tkn = self.data_hparams.start_tkn,
+      # end_tkn = self.data_hparams.end_tkn,
+      # sep_tkn = self.data_hparams.sep_tkn,
+      # mask_tkn = self.data_hparams.mask_tkn,
+      # mask_percent = .15,
+      # mask_variable = self.data_hparams.variable_masking,
+      # cdr3_focus = 1.,
+      # mask_technique = "shotgun",
+      # change_percent = .1,
+      # leave_percent = .1,
     )
     
     train_file_path = os.path.join(self.data_hparams.data_path, 'train_data')
