@@ -52,8 +52,8 @@ def arg_parse():
     parser.add_argument("--cosine_anneal", action="store_true")
     parser.add_argument("--autocast", action="store_true")
     parser.add_argument("--lr_scheduler", type=str, default=None)
-    parser.add_argument('--loss_fn', type=str, default="CrossEntropyLoss")
-    
+    parser.add_argument("--loss_fn", type=str, default="CrossEntropyLoss")
+
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
     parser.add_argument("--checkpoint_interval", type=int, default=None)
     parser.add_argument("--seed", type=int, default=1337)
@@ -66,8 +66,6 @@ def arg_parse():
     parser.add_argument("--correlation_interval", type=int, default=None)
     parser.add_argument("--over_sample_data", type=int, default=0)
     parser.add_argument("--data_path", type=str, default="./data")
-    parser.add_argument("--out_path", type=str, default="./outputs")
-    parser.add_argument("--eval_path", type=str, default="./evals")
     parser.add_argument(
         "--cpus",
         type=int,
@@ -92,9 +90,9 @@ def gen_model_config(args):
         hidden_embed_size=1024,
         n_attn_heads=16,
         n_encoder_blocks=12,
-        padding_tkn=0,
-        mask_tkn=1,
-        start_tkn=2,
+        padding_tkn=21,
+        mask_tkn=23,
+        start_tkn=0,
     )
 
     return model_config
@@ -104,13 +102,11 @@ def config_gen(args, model_config):
     config = SimConfig(
         model_class=AbLang,
         model_config=model_config,
-
         num_epochs=args.epochs,
         num_nodes=args.num_nodes,
         device_type=args.device_type,
         devices=args.devices,
         autocast=args.autocast,
-
         minibatch_size=args.minibatch_size if args.minibatch_size else args.batch_size,
         block_size=args.block_size,
         val_size=args.val_size,
@@ -118,7 +114,6 @@ def config_gen(args, model_config):
         checkpoint_interval=args.checkpoint_interval,
         eval_interval=args.eval_interval,
         correlation_interval=args.correlation_interval,
-        
         gradient_config=GradientConfig(
             optimizer_class=torch.optim.AdamW,
             optimizer_kwargs={
@@ -130,7 +125,6 @@ def config_gen(args, model_config):
             cosine_anneal=args.cosine_anneal,
             max_local_steps=args.max_steps,
         ),
-
         dataset_config=DatasetConfig(
             dataset_name="ablang",
             dataset_load_fn=get_dataset,
