@@ -5,7 +5,7 @@ from DistributedSim.gradient_strategy.sparta_gradient import *
 from ablang import arg_parse, config_gen, gen_model_config
 
 def gen_wandb_name(args):
-    name = f"p{args.p_sparta}_n{args.num_nodes}_lr{args.learning_rate:.0e}"
+    name = f"p{args.p_sparta}_n{args.num_nodes}_lr{args.learning_rate:.0e}_sparta_FIX"
     return name
 
 def main():
