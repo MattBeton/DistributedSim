@@ -9,7 +9,7 @@ from DistributedSim.gradient_strategy.gradient_strategy import *
 
 from DistributedSim.dataset.dataset import DatasetConfig
 from DistributedSim.models.ablang.ablang_2.ablang import AbLangConfig, AbLang
-from DistributedSim.dataset.ablang.datamodule import AbDataset
+from DistributedSim.dataset.ablang.data import AbDataset
 from DistributedSim.models.ablang.ablang_2.tokenizers import ABtokenizer
 
 
@@ -21,10 +21,7 @@ def get_dataset(
 ):
     dataset = AbDataset(
         file_path=d_config.data_path,
-        tokenizer_instance=ABtokenizer,
-        is_train_data=True,
-        block_size=d_config.block_size,
-        over_sample_data=d_config.over_sample_data,
+        tokenizer=ABtokenizer(max_sequence_length=d_config.block_size),
     )
     return dataset
 
@@ -40,7 +37,7 @@ def arg_parse():
 
     parser.add_argument("--start_pc", type=float, default=0.0)
     parser.add_argument("--end_pc", type=float, default=1.0)
-    parser.add_argument("--block_size", type=int, default=512)
+    parser.add_argument("--block_size", type=int, default=128)
 
     parser.add_argument("--num_nodes", type=int, default=1)
     parser.add_argument("--device_type", type=str, default="")
