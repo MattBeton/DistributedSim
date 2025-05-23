@@ -27,7 +27,7 @@ def get_dataset(
 
 
 def gen_wandb_name(args):
-    name = f"bs{args.batch_size}_lr{args.lr:.0e}_nodes{args.num_nodes}"
+    name = f"bs{args.batch_size}_lr{args.lr:.0e}_nodes{args.num_nodes}_FIX"
     return name
 
 
