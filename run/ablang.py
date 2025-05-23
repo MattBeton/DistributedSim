@@ -87,9 +87,9 @@ def gen_model_config(args):
 
     model_config = AbLangConfig(
         vocab_size=100,
-        hidden_embed_size=1024,
-        n_attn_heads=16,
-        n_encoder_blocks=12,
+        hidden_embed_size=768,
+        n_attn_heads=12,
+        n_encoder_blocks=1,
         padding_tkn=21,
         mask_tkn=23,
         start_tkn=0,
