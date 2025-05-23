@@ -121,10 +121,6 @@ class SimpleReduceGradient(GradientStrategy):
         self._setup_scheduler()
 
     def step(self):
-        for param in self.model.parameters():
-            print(f"rank {self.rank}: pre {param.grad.flatten()[:10]}")
-            break
-
         if self.config.num_nodes > 1 or True:
             for param in self.model.parameters():
                 if param.grad is not None:
@@ -137,9 +133,5 @@ class SimpleReduceGradient(GradientStrategy):
                 )
 
         self.optim.step()
-
-        for param in self.model.parameters():
-            print(f"rank {self.rank}: post {param.grad.flatten()[:10]}")
-            break
 
         super().step()
