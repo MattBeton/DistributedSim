@@ -571,8 +571,8 @@ class TrainNode:
 
     def train(self):
         while self.local_step < self.max_steps:
-            # if self.local_step % self.config.eval_interval == 0:
-            #     self._evaluate()
+            if self.local_step % self.config.eval_interval == 0:
+                self._evaluate()
 
             self._train_step()
 
