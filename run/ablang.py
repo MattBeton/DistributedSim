@@ -22,6 +22,8 @@ def get_dataset(
     dataset = AbDataset(
         file_path=d_config.data_path,
         tokenizer=ABtokenizer(max_sequence_length=d_config.block_size),
+        start_pc=start_pc,
+        end_pc=end_pc,
     )
     return dataset
 

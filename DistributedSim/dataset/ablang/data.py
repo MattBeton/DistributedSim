@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import random
 
 from torch.utils.data import Dataset
 from DistributedSim.models.ablang.ablang_2.tokenizers import ABtokenizer
@@ -8,11 +9,20 @@ from DistributedSim.dataset.ablang.datacollators import ABcollator
 
 
 class AbDataset(Dataset):
-    def __init__(self, file_path, tokenizer, over_sample_data=0):
+    def __init__(
+        self,
+        file_path,
+        tokenizer,
+        start_pc=0.0,
+        end_pc=1.0,
+        over_sample_data=0,
+    ):
         self.file_path = file_path
         self.tokenizer = tokenizer
         self.collator = ABcollator(tokenizer)
         self.over_sample_data = over_sample_data
+        self.start_pc = start_pc
+        self.end_pc = end_pc
         self.data = self._get_data(self.file_path)
 
     def __len__(self):
@@ -67,12 +77,25 @@ class AbDataset(Dataset):
         if is_train_data and (self.over_sample_data == 1):
             sizes = [len(heavychain), len(lightchain), len(pairedchain)]
             scale = (np.max(sizes) / sizes).astype(np.int16)
-            return (
+            final_dataset = (
                 heavychain * scale[0] + lightchain * scale[1] + pairedchain * scale[2]
             )
 
         else:
-            return heavychain + lightchain + pairedchain
+            final_dataset = heavychain + lightchain + pairedchain
+
+        final_dataset = random.shuffle(final_dataset)
+
+        partition_start = self.start_pc
+        partition_end = self.end_pc
+
+        final_dataset = final_dataset[
+            int(partition_start * len(final_dataset)) : int(
+                partition_end * len(final_dataset)
+            )
+        ]
+
+        return final_dataset
 
 
 if __name__ == "__main__":

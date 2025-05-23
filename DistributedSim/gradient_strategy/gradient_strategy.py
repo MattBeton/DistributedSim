@@ -10,15 +10,18 @@ import torch.nn.utils as nn_utils
 
 from .communicate import *
 
+
 class GradientConfig:
-    def __init__(self, 
-                 optimizer_class: Type[torch.optim.Optimizer] = None, 
-                 optimizer_kwargs: dict = None,
-                 lr_scheduler: Type[torch.optim.lr_scheduler._LRScheduler] = None,
-                 lr_scheduler_kwargs: dict = None,
-                 max_local_steps: int = None,
-                 max_norm: float = None,
-                 **kwargs):
+    def __init__(
+        self,
+        optimizer_class: Type[torch.optim.Optimizer] = None,
+        optimizer_kwargs: dict = None,
+        lr_scheduler: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+        lr_scheduler_kwargs: dict = None,
+        max_local_steps: int = None,
+        max_norm: float = None,
+        **kwargs,
+    ):
         self.optimizer_class = optimizer_class
         self.optimizer_kwargs = optimizer_kwargs
         self.lr_scheduler = lr_scheduler
@@ -29,6 +32,7 @@ class GradientConfig:
         # Allow additional kwargs to be set as attributes
         for key, value in kwargs.items():
             setattr(self, key, value)
+
 
 class GradientStrategy:
     def __init__(self, rank, model, config, logger=None):
@@ -76,23 +80,34 @@ class GradientStrategy:
     def _setup_scheduler(self):
         def lr_lambda(current_step):
             if current_step < self.gradient_config.warmup_steps:
-                return float(current_step) / float(max(self.gradient_config.warmup_steps, 1))
+                return float(current_step) / float(
+                    max(self.gradient_config.warmup_steps, 1)
+                )
             elif self.gradient_config.cosine_anneal:
                 min_lr_factor = 0.1
                 progress = (current_step - self.gradient_config.warmup_steps) / float(
-                    max(1, self.gradient_config.max_local_steps - self.gradient_config.warmup_steps)
+                    max(
+                        1,
+                        self.gradient_config.max_local_steps
+                        - self.gradient_config.warmup_steps,
+                    )
                 )
                 cosine_term = 0.5 * (1.0 + math.cos(math.pi * progress))
                 return (1 - min_lr_factor) * cosine_term + min_lr_factor
             else:
                 return 1.0
-            
-        if self.gradient_config.lr_scheduler == 'lambda_cosine':
+
+        if self.gradient_config.lr_scheduler == "lambda_cosine":
             self.scheduler = LambdaLR(self.optim, lr_lambda)
         elif self.gradient_config.lr_scheduler is not None:
-            lr_sched_kwargs = (self.gradient_config.lr_scheduler_kwargs 
-                               if self.gradient_config.lr_scheduler_kwargs is not None else {})
-            self.scheduler = self.gradient_config.lr_scheduler(self.optim, **lr_sched_kwargs)
+            lr_sched_kwargs = (
+                self.gradient_config.lr_scheduler_kwargs
+                if self.gradient_config.lr_scheduler_kwargs is not None
+                else {}
+            )
+            self.scheduler = self.gradient_config.lr_scheduler(
+                self.optim, **lr_sched_kwargs
+            )
         else:
             self.scheduler = None
 
@@ -100,11 +115,16 @@ class GradientStrategy:
 class SimpleReduceGradient(GradientStrategy):
     def __init__(self, rank, model, config, logger=None):
         super().__init__(rank, model, config, logger)
-        self.optim = self.gradient_config.optimizer_class(model.parameters(), 
-                                                          **self.gradient_config.optimizer_kwargs)
+        self.optim = self.gradient_config.optimizer_class(
+            model.parameters(), **self.gradient_config.optimizer_kwargs
+        )
         self._setup_scheduler()
 
     def step(self):
+        for param in self.model.parameters():
+            print(f"rank {self.rank}: pre {param.grad.flatten()[:10]}")
+            break
+
         if self.config.num_nodes > 1 or True:
             for param in self.model.parameters():
                 if param.grad is not None:
@@ -112,8 +132,14 @@ class SimpleReduceGradient(GradientStrategy):
                     param.grad.div_(dist.get_world_size())
 
             if self.gradient_config.max_norm:
-                nn_utils.clip_grad_norm_(self.model.parameters(), max_norm=self.gradient_config.max_norm)
+                nn_utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=self.gradient_config.max_norm
+                )
 
         self.optim.step()
+
+        for param in self.model.parameters():
+            print(f"rank {self.rank}: post {param.grad.flatten()[:10]}")
+            break
 
         super().step()
