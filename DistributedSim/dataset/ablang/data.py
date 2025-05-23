@@ -84,7 +84,7 @@ class AbDataset(Dataset):
         else:
             final_dataset = heavychain + lightchain + pairedchain
 
-        final_dataset = random.shuffle(final_dataset)
+        random.shuffle(final_dataset)
 
         partition_start = self.start_pc
         partition_end = self.end_pc
