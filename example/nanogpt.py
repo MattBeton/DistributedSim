@@ -104,17 +104,7 @@ def create_strategy(args):
     'cosine_anneal': args.cosine_anneal
   }
   
-  if args.strategy == "base":
-    from exogym.strategy.strategy import Strategy
-    optim = OptimSpec(torch.optim.AdamW, lr=args.lr)
-    return Strategy(
-      optim_spec=optim,
-      lr_scheduler='lambda_cosine',
-      lr_scheduler_kwargs=lr_scheduler_kwargs,
-      max_norm=args.max_norm
-    )
-    
-  elif args.strategy == "ddp":
+  if args.strategy == "ddp" or args.strategy == "base" or args.strategy == "":
     from exogym.strategy.strategy import SimpleReduceStrategy
     optim = OptimSpec(torch.optim.AdamW, lr=args.lr)
     return SimpleReduceStrategy(
